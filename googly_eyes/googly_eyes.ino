@@ -6,6 +6,9 @@
 #define BLINK_EYE_DELAY 10
 #define BLINK_EYE_CHANCE 5
 
+#define EYE_LEFT 0
+#define EYE_RIGHT 1
+
 #define NUM_EYES 2
 #define NUM_COLS 8
 #define NUM_ROWS 8
@@ -46,33 +49,26 @@ const byte template_eye[8] = {
 // Display buffer for rendering eyes
 byte eyes[NUM_EYES + 1][NUM_ROWS + 1];
 
+// Prerendered positions of the eyeball & pupil
 byte positions[MAX_PUPIL_X + 1][MAX_PUPIL_Y + 1][NUM_ROWS + 1];
 
 int intensity, pupil_x, pupil_y, eyelid_y;
 
 void setup() {
+  
   #ifdef DEBUG
     Serial.begin(9600);
     while (!Serial) { }
     Serial.println("STARTING UP");
   #endif
-
-  prerenderPositions();
   
   intensity = 0;
   pupil_x = 0;
   pupil_y = 0;
   eyelid_y = 0;
 
-  for (int i=0; i<NUM_EYES; i++) {
-    for (int j=0; j<NUM_ROWS; j++) {
-      eyes[i][j] = 0;
-    }
-    lc.shutdown(i, false);
-    lc.setIntensity(i, intensity);
-    lc.clearDisplay(i);
-  }
-  
+  prerenderPositions();
+  resetDisplay();
 }
 
 void loop() {
@@ -85,13 +81,10 @@ void loop() {
   // eyelid_y = constrainInt(pupil_y + random(-1, 2), MIN_EYELID_Y, MAX_EYELID_Y);
   // intensity = constrainInt(intensity + random(-1, 2), MIN_INTENSITY, MAX_INTENSITY);
 
-  for (int i=0; i<NUM_EYES; i++) {
-    lc.setIntensity(i, intensity);
-    renderEyeball(i, pupil_x, pupil_y);
-    renderEyelid(i, eyelid_y);
-  }
+  setEyeballPosition(EYE_LEFT, pupil_x, pupil_y);
+  setEyeballPosition(EYE_RIGHT, pupil_x, pupil_y);
 
-  displayEyes();
+  updateDisplay();
 
   if (random(0, 100) < BLINK_EYE_CHANCE) {
     blinkEyes();
@@ -100,29 +93,38 @@ void loop() {
   delay(MOVE_EYE_DELAY);
 }
 
+// Ensure the displays are on, intense, and cleared.
+void resetDisplay() {
+  for (int i=0; i<NUM_EYES; i++) {
+    lc.shutdown(i, false);
+    lc.setIntensity(i, intensity);
+    lc.clearDisplay(i);
+  }  
+}
+
+// Blink by rapidly dropping and raising the "eyelid"
 void blinkEyes() {
-  for (int j=eyelid_y; j<NUM_ROWS; j++) {
+  for (int y=eyelid_y; y<NUM_ROWS; y++) {
     for (int i=0; i<NUM_EYES; i++) {
-      renderEyeball(i, pupil_x, pupil_y);
-      renderEyelid(i, j);
+      setEyeballPosition(i, pupil_x, pupil_y);
+      renderEyelid(i, y);
     }
-    displayEyes();
+    updateDisplay();
     delay(BLINK_EYE_DELAY);
   }
-  for (int j=NUM_ROWS-1; j>=eyelid_y; j--) {
+  for (int y=NUM_ROWS-1; y>=eyelid_y; y--) {
     for (int i=0; i<NUM_EYES; i++) {
-      renderEyeball(i, pupil_x, pupil_y);
-      renderEyelid(i, j);
+      setEyeballPosition(i, pupil_x, pupil_y);
+      renderEyelid(i, y);
     }
-    displayEyes();
+    updateDisplay();
     delay(BLINK_EYE_DELAY);
   } 
 }
 
-void renderEyeball(int idx, int x, int y) {
-  for (int i=0; i<NUM_ROWS; i++) {
-    eyes[idx][i] = positions[x][y][i];
-  }
+// Set the eyeball by copying a prerendered position 
+void setEyeballPosition(int idx, int x, int y) {
+  memcpy(eyes[idx], positions[x][y], NUM_ROWS);
 }
 
 // Render "eyelid" in display buffer by blacking out rows
@@ -132,6 +134,8 @@ void renderEyelid(int idx, int y) {
   }
 }
 
+// Fill the set of prerendered positions based on
+// all possible x/y pairs
 void prerenderPositions() {
   for (int x=0; x<=MAX_PUPIL_X; x++) {
     for (int y=0; y<=MAX_PUPIL_Y; y++) {
@@ -145,9 +149,7 @@ void prerenderPositions() {
 void renderPosition(int x, int y) {
 
   // Copy in the blank eyeball template
-  for (int i=0; i<NUM_ROWS; i++) {
-    positions[x][y][i] = template_eye[i];
-  }
+  memcpy(positions[x][y], template_eye, NUM_ROWS);
 
   // Use binary right shift to adjust pupil to x position
   byte pupil = template_pupil >> (x + MARGIN_X);
@@ -162,7 +164,7 @@ void renderPosition(int x, int y) {
 }
 
 // Set the LED contents from the display buffers
-void displayEyes() {
+void updateDisplay() {
   for (int j=0; j<NUM_ROWS; j++) {
     for (int i=0; i<NUM_EYES; i++) {
       lc.setRow(i, j, eyes[i][j]);
