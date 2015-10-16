@@ -4,10 +4,6 @@
 
 #define INTENSITY 0
 
-#define MOVE_EYE_DELAY 200
-#define BLINK_EYE_DELAY 15
-#define BLINK_EYE_CHANCE 5
-
 #define EYE_LEFT 0
 #define EYE_RIGHT 1
 
@@ -49,56 +45,176 @@ const byte template_eye[8] = {
   B00111100
 };
 
-#define END_OF_ANIM -1
-
-#define WAIT_1 50
-#define WAIT_2 100
-#define WAIT_3 200
-#define WAIT_4 400
-#define WAIT_5 800
-#define WAIT_LONG 1500
-
-#define BLINK_EYE 16
-
 #define OP_MOVE 10
 #define OP_BLINK 20
+#define OP_END 99
 
-int ANIM_STARE[][5] = {
-  {2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},
-  {2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},
-  {BLINK_EYE,0,BLINK_EYE,0,0},
-  {2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},
-  {2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},{2,2,2,2,WAIT_2},
-  {BLINK_EYE,0,BLINK_EYE,0,0}, 
-  {END_OF_ANIM,0,0,0,0}
+#define WAIT_QUICK 50
+#define WAIT_FAST 200
+#define WAIT_MED 400
+#define WAIT_SLOW 800
+#define WAIT_HOLD 1600
+#define WAIT_RANDOM -999
+
+#define BLINK_WAIT 5
+
+#define RANDOM_WAIT_MIN 500
+#define RANDOM_WAIT_MAX 1500
+
+struct AnimationStep {
+  int op_left;
+  int left_x;
+  int left_y;
+  int op_right;
+  int right_x;
+  int right_y;
+  int wait;
 };
 
-int ANIM_SIDE_TO_SIDE[][5]  = {
-  {2,2,2,2,WAIT_3}, {1,2,1,2,WAIT_3}, {0,2,0,2,WAIT_4}, {1,2,1,2,WAIT_3}, {2,2,2,2,500},
-  {3,2,3,2,WAIT_3}, {4,2,4,2,WAIT_4}, {3,2,3,2,WAIT_3}, 
-  {2,2,2,2,WAIT_5}, 
-  {END_OF_ANIM,0,0,0,0}
+AnimationStep ANIM_STARE[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_RANDOM},
+  {OP_BLINK,2,2,OP_BLINK,2,2,WAIT_QUICK},
+  {OP_END,0,0,0,0,0,0}
 };
 
-int ANIM_EYE_ROLL[][5] = {
-  {2,2,2,2,WAIT_1}, {1,2,1,2,WAIT_1}, {0,2,0,2,WAIT_1}, {0,1,0,1,WAIT_1}, {0,0,0,0,WAIT_1}, {1,0,1,0,WAIT_1},
-  {2,0,2,0,WAIT_1}, {3,0,3,0,WAIT_1}, {4,0,4,0,WAIT_1}, {4,1,4,1,WAIT_1}, {4,2,4,2,WAIT_1}, {3,2,3,2,WAIT_1},
-  {2,2,2,2,WAIT_5}, 
-  {END_OF_ANIM,0,0,0,0}
+AnimationStep ANIM_SIDE_TO_SIDE[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,1,2,OP_MOVE,1,2,WAIT_QUICK},
+  {OP_MOVE,0,2,OP_MOVE,0,2,WAIT_SLOW},
+  {OP_MOVE,1,2,OP_MOVE,1,2,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,3,2,OP_MOVE,3,2,WAIT_QUICK},
+  {OP_MOVE,4,2,OP_MOVE,4,2,WAIT_SLOW},
+  {OP_MOVE,3,2,OP_MOVE,3,2,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_END,0,0,0,0,0,0}
 };
 
-int ANIM_CROSSED[][5] = {
-  {2,2,2,2,WAIT_1}, {3,2,1,2,WAIT_3}, {4,2,0,2,WAIT_LONG}, {3,2,1,2,WAIT_3}, {2,2,2,2,WAIT_LONG}, 
-  {END_OF_ANIM,0,0,0,0}
+AnimationStep ANIM_ROLL[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,1,2,OP_MOVE,1,2,WAIT_QUICK},
+  {OP_MOVE,0,2,OP_MOVE,0,2,WAIT_QUICK},
+  {OP_MOVE,0,1,OP_MOVE,0,1,WAIT_QUICK},
+  {OP_MOVE,0,0,OP_MOVE,0,0,WAIT_QUICK},
+  {OP_MOVE,1,0,OP_MOVE,1,0,WAIT_QUICK},
+  {OP_MOVE,2,0,OP_MOVE,2,0,WAIT_QUICK},
+  {OP_MOVE,3,0,OP_MOVE,3,0,WAIT_QUICK},
+  {OP_MOVE,4,0,OP_MOVE,4,0,WAIT_QUICK},
+  {OP_MOVE,4,1,OP_MOVE,4,1,WAIT_QUICK},
+  {OP_MOVE,4,2,OP_MOVE,4,2,WAIT_QUICK},
+  {OP_MOVE,3,2,OP_MOVE,3,2,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_HOLD},
+  {OP_END,0,0,0,0,0,0}
 };
 
-int* animations[] = {
-  *ANIM_STARE,
-  *ANIM_SIDE_TO_SIDE,
-  *ANIM_SIDE_TO_SIDE,
-  *ANIM_SIDE_TO_SIDE,
-  *ANIM_EYE_ROLL,
-  *ANIM_CROSSED
+AnimationStep ANIM_CROSSED[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,3,2,OP_MOVE,1,2,WAIT_QUICK},
+  {OP_MOVE,4,2,OP_MOVE,0,2,WAIT_HOLD},
+  {OP_MOVE,3,2,OP_MOVE,1,2,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_HOLD}, 
+  {OP_END,0,0,0,0,0,0}
+};
+
+AnimationStep ANIM_DERP[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,1,2,OP_MOVE,3,2,WAIT_QUICK},
+  {OP_MOVE,0,2,OP_MOVE,4,2,WAIT_HOLD},
+  {OP_MOVE,1,2,OP_MOVE,3,2,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_HOLD}, 
+  {OP_END,0,0,0,0,0,0}
+};
+
+AnimationStep ANIM_LOOK_NOSE[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,3,3,OP_MOVE,1,3,WAIT_QUICK},
+  {OP_MOVE,4,4,OP_MOVE,0,4,WAIT_HOLD},
+  {OP_BLINK,4,4,OP_BLINK,0,4,WAIT_RANDOM},
+  {OP_MOVE,3,3,OP_MOVE,1,3,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_END,0,0,0,0,0,0}
+};
+
+AnimationStep ANIM_LOOK_BROW[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,3,1,OP_MOVE,1,1,WAIT_QUICK},
+  {OP_MOVE,4,0,OP_MOVE,0,0,WAIT_HOLD},
+  {OP_BLINK,4,0,OP_BLINK,0,0,WAIT_RANDOM},
+  {OP_MOVE,3,1,OP_MOVE,1,1,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_END,0,0,0,0,0,0}
+};
+
+AnimationStep ANIM_WINK_LEFT[] = {
+  {OP_BLINK,2,2,OP_MOVE,2,2,WAIT_RANDOM},
+  {OP_END,0,0,0,0,0,0}
+};
+
+AnimationStep ANIM_WINK_RIGHT[] = {
+  {OP_MOVE,2,2,OP_BLINK,2,2,WAIT_RANDOM},
+  {OP_END,0,0,0,0,0,0}
+};
+
+AnimationStep ANIM_DOWN_LEFT[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,1,3,OP_MOVE,1,3,WAIT_QUICK},
+  {OP_MOVE,0,4,OP_MOVE,0,4,WAIT_HOLD},
+  {OP_MOVE,1,3,OP_MOVE,1,3,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_END,0,0,0,0,0,0}
+};
+
+AnimationStep ANIM_DOWN_RIGHT[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,3,3,OP_MOVE,3,3,WAIT_QUICK},
+  {OP_MOVE,4,4,OP_MOVE,4,4,WAIT_HOLD},
+  {OP_MOVE,3,3,OP_MOVE,3,3,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_END,0,0,0,0,0,0}
+};
+
+AnimationStep ANIM_UP_LEFT[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,1,1,OP_MOVE,1,1,WAIT_QUICK},
+  {OP_MOVE,0,0,OP_MOVE,0,0,WAIT_HOLD},
+  {OP_MOVE,1,1,OP_MOVE,1,1,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_END,0,0,0,0,0,0}
+};
+
+AnimationStep ANIM_UP_RIGHT[] = {
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,3,1,OP_MOVE,3,1,WAIT_QUICK},
+  {OP_MOVE,4,0,OP_MOVE,4,0,WAIT_HOLD},
+  {OP_MOVE,3,1,OP_MOVE,3,1,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_END,0,0,0,0,0,0}
+};
+
+AnimationStep* animations[] = {
+  ANIM_STARE, 
+  ANIM_STARE, 
+  ANIM_STARE, 
+  ANIM_STARE, 
+  ANIM_STARE, 
+  ANIM_STARE, 
+  ANIM_SIDE_TO_SIDE, 
+  ANIM_SIDE_TO_SIDE, 
+  ANIM_SIDE_TO_SIDE, 
+  ANIM_SIDE_TO_SIDE, 
+  ANIM_ROLL,
+  ANIM_ROLL,
+  ANIM_ROLL,
+  ANIM_CROSSED,
+  ANIM_DERP,
+  ANIM_LOOK_NOSE,
+  ANIM_LOOK_BROW,
+  ANIM_WINK_LEFT,
+  ANIM_WINK_RIGHT,
+  ANIM_UP_LEFT,
+  ANIM_UP_RIGHT,
+  ANIM_DOWN_LEFT,
+  ANIM_DOWN_RIGHT
 };
 
 // Display buffer for rendering eyes
@@ -118,43 +234,65 @@ void setup() {
 }
 
 void loop() {
-  runAnimation(animations[random(0, sizeof(animations) / sizeof(int*))]);
+  runAnimation(animations[random(0, sizeof(animations) / sizeof(AnimationStep*))]);
 }
 
-void runAnimation(int* step_ptr) {
+void runAnimation(struct AnimationStep* step_ptr) {
   while (1) {
-    int left_x = step_ptr[0];
-    int left_y = step_ptr[1];
-    int right_x = step_ptr[2];
-    int right_y = step_ptr[3];
-    int wait = step_ptr[4];
-    
-    if (left_x == END_OF_ANIM) { 
-      break;
-    } else if (left_x == BLINK_EYE && right_x == BLINK_EYE) {
-      blinkEyes(1, 1);
+    AnimationStep curr = *step_ptr;
+
+    if (curr.op_left == OP_END) { break; }
+
+    if (curr.op_left == OP_BLINK && curr.op_right == OP_BLINK) {
+      blinkEyes(1, 1, curr.left_x, curr.left_y, curr.right_x, curr.right_y);
     } else {
-      copyEyeballPosition(EYE_LEFT, left_x, left_y);
-      copyEyeballPosition(EYE_RIGHT, right_x, right_y);
+      if (curr.op_left == OP_MOVE) {
+        copyEyeballPosition(EYE_LEFT, curr.left_x, curr.left_y);
+      }
+      if (curr.op_right == OP_MOVE) {
+        copyEyeballPosition(EYE_RIGHT, curr.right_x, curr.right_y);
+      }
       updateDisplay();
+      if (curr.op_left == OP_BLINK) {
+        blinkEyes(1, 0, curr.left_x, curr.left_y, curr.right_x, curr.right_y);      
+      }
+      if (curr.op_right == OP_BLINK) {
+        blinkEyes(0, 1, curr.left_x, curr.left_y, curr.right_x, curr.right_y);      
+      }
     }
 
-    delay(wait);
-    step_ptr += 5;
+    if (curr.wait == WAIT_RANDOM) {
+      delay(random(RANDOM_WAIT_MIN, RANDOM_WAIT_MAX));
+    } else {
+      delay(curr.wait);
+    }
+    
+    step_ptr += 1;
   }
 }
 
 // Blink by rapidly dropping and raising the "eyelid"
-void blinkEyes(int do_left, int do_right) {
+void blinkEyes(int do_left, int do_right, int left_x, int left_y, int right_x, int right_y) {
   int y;
   for (int idx = -NUM_ROWS; idx <= NUM_ROWS; idx++) {
     y = NUM_ROWS - abs(idx);
-    copyEyeballPosition(EYE_LEFT, 2, 2);
-    copyEyeballPosition(EYE_RIGHT, 2, 2);
-    if (do_left) { renderEyelid(EYE_LEFT, y); }
-    if (do_right) { renderEyelid(EYE_RIGHT, y); }
+    if (do_left) { 
+      copyEyeballPosition(EYE_LEFT, left_x, left_y);
+      renderEyelid(EYE_LEFT, y); 
+    }
+    if (do_right) { 
+      copyEyeballPosition(EYE_RIGHT, right_x, right_y);
+      renderEyelid(EYE_RIGHT, y); 
+    }
     updateDisplay();
-    delay(BLINK_EYE_DELAY);
+    delay(BLINK_WAIT);
+  }
+}
+
+// Render "eyelid" in display buffer by blacking out rows
+void renderEyelid(int idx, int y) {
+  for (int i=0; i<y; i++) {
+    eyes[idx][i] = 0;
   }
 }
 
@@ -170,13 +308,6 @@ void resetDisplay() {
 // Set the eyeball by copying a prerendered position 
 void copyEyeballPosition(int idx, int x, int y) {
   memcpy(eyes[idx], positions[x][y], NUM_ROWS);
-}
-
-// Render "eyelid" in display buffer by blacking out rows
-void renderEyelid(int idx, int y) {
-  for (int i=0; i<y; i++) {
-    eyes[idx][i] = 0;
-  }
 }
 
 // Fill the set of prerendered positions based on
