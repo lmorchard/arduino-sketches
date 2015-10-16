@@ -23,9 +23,6 @@
 #define MIN_PUPIL_Y 0
 #define MAX_PUPIL_Y NUM_ROWS - PUPIL_ROWS - MARGIN_Y * 2
 
-#define MIN_EYELID_Y 0
-#define MAX_EYELID_Y 3
-
 #define MIN_INTENSITY 1
 #define MAX_INTENSITY 15
 
@@ -47,14 +44,19 @@ const byte template_eye[8] = {
 
 #define OP_MOVE 10
 #define OP_BLINK 20
+#define OP_WANDER 30
 #define OP_END 99
 
 #define WAIT_QUICK 50
 #define WAIT_FAST 200
 #define WAIT_MED 400
 #define WAIT_SLOW 800
-#define WAIT_HOLD 1600
+#define WAIT_HOLD 1500
 #define WAIT_RANDOM -999
+
+#define WANDER_WAIT 100
+#define MIN_WANDER_STEPS 10
+#define MAX_WANDER_STEPS 25
 
 #define BLINK_WAIT 5
 
@@ -191,9 +193,15 @@ AnimationStep ANIM_UP_RIGHT[] = {
   {OP_END,0,0,0,0,0,0}
 };
 
+AnimationStep ANIM_WANDER[] = {
+  {OP_WANDER,0,0,OP_WANDER,0,0,WAIT_QUICK},
+  {OP_END,0,0,0,0,0,0}
+};
+
 AnimationStep* animations[] = {
-  ANIM_STARE, 
-  ANIM_STARE, 
+  ANIM_WANDER,
+  ANIM_WANDER,
+  ANIM_STARE,
   ANIM_STARE, 
   ANIM_STARE, 
   ANIM_STARE, 
@@ -245,6 +253,8 @@ void runAnimation(struct AnimationStep* step_ptr) {
 
     if (curr.op_left == OP_BLINK && curr.op_right == OP_BLINK) {
       blinkEyes(1, 1, curr.left_x, curr.left_y, curr.right_x, curr.right_y);
+    } else if (curr.op_left == OP_WANDER && curr.op_right == OP_WANDER) {
+      wanderEyes();
     } else {
       if (curr.op_left == OP_MOVE) {
         copyEyeballPosition(EYE_LEFT, curr.left_x, curr.left_y);
@@ -287,6 +297,25 @@ void blinkEyes(int do_left, int do_right, int left_x, int left_y, int right_x, i
     updateDisplay();
     delay(BLINK_WAIT);
   }
+}
+
+void wanderEyes() {
+  int x = 2;
+  int y = 2;
+  int max_steps = random(MIN_WANDER_STEPS, MAX_WANDER_STEPS);
+
+  for (int steps = 0; steps < max_steps; steps++) {
+    x += random(-1, 2);
+    x = constrain(x, MIN_PUPIL_X, MAX_PUPIL_X);
+    y += random(-1, 2);
+    y = constrain(y, MIN_PUPIL_Y, MAX_PUPIL_Y);
+    
+    copyEyeballPosition(EYE_LEFT, x, y);
+    copyEyeballPosition(EYE_RIGHT, x, y);
+    updateDisplay();
+    delay(WANDER_WAIT);
+  }
+
 }
 
 // Render "eyelid" in display buffer by blacking out rows
