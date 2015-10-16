@@ -250,6 +250,7 @@ void loop() {
   runAnimation(animations[random(0, sizeof(animations) / sizeof(AnimationStep*))]);
 }
 
+// This is a total mess, and it shames me.
 void runAnimation(struct AnimationStep* step_ptr) {
   while (1) {
     AnimationStep curr = *step_ptr;
@@ -304,6 +305,7 @@ void blinkEyes(int do_left, int do_right, int left_x, int left_y, int right_x, i
   }
 }
 
+// Random wandering eyes
 void wanderEyes() {
   int x = 2;
   int y = 2;
@@ -344,8 +346,9 @@ void copyEyeballPosition(int idx, int x, int y) {
   memcpy(eyes[idx], positions[x][y], NUM_ROWS);
 }
 
-// Fill the set of prerendered positions based on
-// all possible x/y pairs
+// Fill the set of prerendered positions for all x/y pairs
+// Probably a gross over-optimization, but kind of hoping
+// doing less math on every eye position will save battery life
 void prerenderPositions() {
   for (int x=0; x<=MAX_PUPIL_X; x++) {
     for (int y=0; y<=MAX_PUPIL_Y; y++) {
