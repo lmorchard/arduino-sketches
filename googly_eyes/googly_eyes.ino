@@ -51,7 +51,7 @@ const byte template_eye[8] = {
 #define WAIT_FAST 200
 #define WAIT_MED 400
 #define WAIT_SLOW 800
-#define WAIT_HOLD 1500
+#define WAIT_HOLD 2000
 #define WAIT_RANDOM -999
 
 #define WANDER_WAIT 100
@@ -60,7 +60,7 @@ const byte template_eye[8] = {
 
 #define BLINK_WAIT 5
 
-#define RANDOM_WAIT_MIN 500
+#define RANDOM_WAIT_MIN 750
 #define RANDOM_WAIT_MAX 1500
 
 struct AnimationStep {
@@ -82,11 +82,11 @@ AnimationStep ANIM_STARE[] = {
 AnimationStep ANIM_SIDE_TO_SIDE[] = {
   {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
   {OP_MOVE,1,2,OP_MOVE,1,2,WAIT_QUICK},
-  {OP_MOVE,0,2,OP_MOVE,0,2,WAIT_SLOW},
+  {OP_MOVE,0,2,OP_MOVE,0,2,WAIT_HOLD},
   {OP_MOVE,1,2,OP_MOVE,1,2,WAIT_QUICK},
   {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
   {OP_MOVE,3,2,OP_MOVE,3,2,WAIT_QUICK},
-  {OP_MOVE,4,2,OP_MOVE,4,2,WAIT_SLOW},
+  {OP_MOVE,4,2,OP_MOVE,4,2,WAIT_HOLD},
   {OP_MOVE,3,2,OP_MOVE,3,2,WAIT_QUICK},
   {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
   {OP_END,0,0,0,0,0,0}
@@ -199,8 +199,11 @@ AnimationStep ANIM_WANDER[] = {
 };
 
 AnimationStep* animations[] = {
-  ANIM_WANDER,
-  ANIM_WANDER,
+  ANIM_STARE,
+  ANIM_STARE,
+  ANIM_STARE,
+  ANIM_STARE,
+  ANIM_STARE,
   ANIM_STARE,
   ANIM_STARE, 
   ANIM_STARE, 
@@ -213,6 +216,8 @@ AnimationStep* animations[] = {
   ANIM_ROLL,
   ANIM_ROLL,
   ANIM_ROLL,
+  ANIM_ROLL,
+  ANIM_WANDER,
   ANIM_CROSSED,
   ANIM_DERP,
   ANIM_LOOK_NOSE,
