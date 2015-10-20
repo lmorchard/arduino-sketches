@@ -1,5 +1,10 @@
 #include "LedControl.h"
 
+// Pins: DIN,CLK,CS, # of Display connected
+LedControl lc = LedControl(12, 11, 10, 2); 
+
+#define POT_PIN 0
+
 #define DEBUG 1
 
 #define INTENSITY 0
@@ -26,9 +31,6 @@
 #define MIN_INTENSITY 1
 #define MAX_INTENSITY 15
 
-// Pins: DIN,CLK,CS, # of Display connected
-LedControl lc = LedControl(12, 11, 10, 2); 
-
 // Templates for pupil and eyeball
 const byte template_pupil = B11000000;
 const byte template_eye[8] = {
@@ -51,7 +53,7 @@ const byte template_eye[8] = {
 #define WAIT_FAST 200
 #define WAIT_MED 400
 #define WAIT_SLOW 800
-#define WAIT_HOLD 2000
+#define WAIT_HOLD 1600
 #define WAIT_RANDOM -999
 
 #define WANDER_WAIT 100
@@ -246,7 +248,13 @@ void setup() {
   resetDisplay();  
 }
 
+int pot_val;
+
 void loop() {
+  pot_val = analogRead(POT_PIN);
+  for (int i=0; i<NUM_EYES; i++) {
+    lc.setIntensity(i, map(pot_val, 0, 1023, 0, 15));
+  }
   runAnimation(animations[random(0, sizeof(animations) / sizeof(AnimationStep*))]);
 }
 
