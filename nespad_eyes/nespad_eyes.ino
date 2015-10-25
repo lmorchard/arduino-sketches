@@ -1,6 +1,12 @@
 #include <LedControl.h>
 #include <NESpad.h>
 
+// put your own strobe/clock/data pin numbers here -- see the pinout in readme.txt
+NESpad nintendo = NESpad(2,3,4);
+
+// Pins: DIN,CLK,CS, # of Display connected
+LedControl lc = LedControl(12, 11, 10, 2); 
+
 #define POT_PIN 0
 
 #define DEBUG 1
@@ -37,11 +43,11 @@
 
 #define LOOP_DELAY 25
 
-// put your own strobe/clock/data pin numbers here -- see the pinout in readme.txt
-NESpad nintendo = NESpad(2,3,4);
+#define MAX_IDLE_TIME 3000
+#define MIN_IDLE_MOVE_DELAY 200
+#define MAX_IDLE_MOVE_DELAY 1000
 
-// Pins: DIN,CLK,CS, # of Display connected
-LedControl lc = LedControl(12, 11, 10, 2); 
+#define IDLE_BLINK_CHANCE 7
 
 // Templates for pupil and eyeball
 const byte template_pupil = B11000000;
@@ -54,6 +60,13 @@ const byte template_eye[8] = {
   B11111111,
   B01111110,
   B00111100
+};
+
+byte idlePads[] = {
+  NES_UP, NES_DOWN, NES_LEFT, NES_RIGHT,
+  NES_UP | NES_LEFT, NES_UP | NES_RIGHT,
+  NES_DOWN | NES_LEFT, NES_DOWN | NES_RIGHT,
+  NES_LEFT | NES_START, NES_RIGHT | NES_START
 };
 
 // Display buffer for rendering eyes
@@ -72,7 +85,7 @@ int min_pos[] = { MIN_PUPIL_X, MIN_PUPIL_Y, MIN_EYELID };
 int max_pos[] = { MAX_PUPIL_X, MAX_PUPIL_Y, MAX_EYELID };
 int scale_pos[] = { 1, 1, 3 };
 
-int i, current, target, pot, pad;
+int i, current, target, pot, pad, idle_pad, idle_time, idle_move_delay;
 
 void setup() {
   #ifdef DEBUG
@@ -80,6 +93,9 @@ void setup() {
     while (!Serial) { }
     Serial.println("STARTING UP");
   #endif
+
+  idle_time = 0;
+  idle_move_delay = 0;
   prerenderPositions();
   resetDisplay();
   updateDisplay();
@@ -90,12 +106,32 @@ void loop() {
   setDisplayIntensity(pot);
 
   pad = nintendo.buttons();
+  idle_time = (pad != 0) ? 0 : idle_time + LOOP_DELAY;
+
+  if (idle_time > MAX_IDLE_TIME) {
+    idle_move_delay -= LOOP_DELAY;
+    if (idle_move_delay <= 0) {
+      setRandomIdlePad();
+    }
+    pad = idle_pad;
+  }
+  
   setTargetsFromPad(pad);
-
   animateToTargets();
-
   updateDisplay();
+
   delay(LOOP_DELAY);
+}
+
+byte setRandomIdlePad() {
+  idle_pad = idlePads[random(0, sizeof(idlePads))];
+  idle_move_delay = random(MIN_IDLE_MOVE_DELAY, MAX_IDLE_MOVE_DELAY);
+  
+  // Blink quickly, every now and then
+  if (random(0, 100) < IDLE_BLINK_CHANCE) {
+    idle_pad |= NES_B | NES_A;
+    idle_move_delay = 100;
+  }
 }
 
 void setTargetsFromPad(byte pad) {
