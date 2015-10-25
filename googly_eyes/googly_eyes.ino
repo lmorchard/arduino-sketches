@@ -308,7 +308,7 @@ void loop() {
   runAnimation(animations[random(0, sizeof(animations) / sizeof(AnimationStep*))]);
   #endif
 
-  #ifndef USE_GAMEPAD
+  #ifdef USE_GAMEPAD
   if (pad & NES_UP && pad & NES_LEFT) {
     anim = ANIM_UP_LEFT;
   } else if (pad & NES_UP && pad & NES_RIGHT) {
