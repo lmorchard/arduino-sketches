@@ -1,8 +1,4 @@
-#include <LedControl.h>
-#include <NESpad.h>
-
-// put your own strobe/clock/data pin numbers here -- see the pinout in readme.txt
-NESpad nintendo = NESpad(2,3,4);
+#include "LedControl.h"
 
 // Pins: DIN,CLK,CS, # of Display connected
 LedControl lc = LedControl(12, 11, 10, 2); 
@@ -10,8 +6,6 @@ LedControl lc = LedControl(12, 11, 10, 2);
 #define POT_PIN 0
 
 #define DEBUG 1
-
-#define USE_GAMEPAD 1
 
 #define INTENSITY 0
 
@@ -59,7 +53,7 @@ const byte template_eye[8] = {
 #define WAIT_FAST 200
 #define WAIT_MED 400
 #define WAIT_SLOW 800
-#define WAIT_HOLD 400
+#define WAIT_HOLD 1600
 #define WAIT_RANDOM -999
 
 #define WANDER_WAIT 100
@@ -84,42 +78,6 @@ struct AnimationStep {
 AnimationStep ANIM_STARE[] = {
   {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_RANDOM},
   {OP_BLINK,2,2,OP_BLINK,2,2,WAIT_QUICK},
-  {OP_END,0,0,0,0,0,0}
-};
-
-AnimationStep ANIM_LOOK_LEFT[] = {
-  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
-  {OP_MOVE,1,2,OP_MOVE,1,2,WAIT_QUICK},
-  {OP_MOVE,0,2,OP_MOVE,0,2,WAIT_HOLD},
-  {OP_MOVE,1,2,OP_MOVE,1,2,WAIT_QUICK},
-  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
-  {OP_END,0,0,0,0,0,0}
-};
-
-AnimationStep ANIM_LOOK_RIGHT[] = {
-  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
-  {OP_MOVE,3,2,OP_MOVE,3,2,WAIT_QUICK},
-  {OP_MOVE,4,2,OP_MOVE,4,2,WAIT_HOLD},
-  {OP_MOVE,3,2,OP_MOVE,3,2,WAIT_QUICK},
-  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
-  {OP_END,0,0,0,0,0,0}
-};
-
-AnimationStep ANIM_LOOK_UP[] = {
-  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
-  {OP_MOVE,2,1,OP_MOVE,2,1,WAIT_QUICK},
-  {OP_MOVE,2,0,OP_MOVE,2,0,WAIT_HOLD},
-  {OP_MOVE,2,1,OP_MOVE,2,1,WAIT_QUICK},
-  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
-  {OP_END,0,0,0,0,0,0}
-};
-
-AnimationStep ANIM_LOOK_DOWN[] = {
-  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
-  {OP_MOVE,2,3,OP_MOVE,2,3,WAIT_QUICK},
-  {OP_MOVE,2,4,OP_MOVE,2,4,WAIT_HOLD},
-  {OP_MOVE,2,3,OP_MOVE,2,3,WAIT_QUICK},
-  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
   {OP_END,0,0,0,0,0,0}
 };
 
@@ -149,7 +107,7 @@ AnimationStep ANIM_ROLL[] = {
   {OP_MOVE,4,1,OP_MOVE,4,1,WAIT_QUICK},
   {OP_MOVE,4,2,OP_MOVE,4,2,WAIT_QUICK},
   {OP_MOVE,3,2,OP_MOVE,3,2,WAIT_QUICK},
-  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_HOLD},
   {OP_END,0,0,0,0,0,0}
 };
 
@@ -158,7 +116,7 @@ AnimationStep ANIM_CROSSED[] = {
   {OP_MOVE,3,2,OP_MOVE,1,2,WAIT_QUICK},
   {OP_MOVE,4,2,OP_MOVE,0,2,WAIT_HOLD},
   {OP_MOVE,3,2,OP_MOVE,1,2,WAIT_QUICK},
-  {OP_MOVE,2,2,OP_MOVE,1,2,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_HOLD}, 
   {OP_END,0,0,0,0,0,0}
 };
 
@@ -167,7 +125,7 @@ AnimationStep ANIM_DERP[] = {
   {OP_MOVE,1,2,OP_MOVE,3,2,WAIT_QUICK},
   {OP_MOVE,0,2,OP_MOVE,4,2,WAIT_HOLD},
   {OP_MOVE,1,2,OP_MOVE,3,2,WAIT_QUICK},
-  {OP_MOVE,2,2,OP_MOVE,1,2,WAIT_QUICK},
+  {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_HOLD}, 
   {OP_END,0,0,0,0,0,0}
 };
 
@@ -175,7 +133,7 @@ AnimationStep ANIM_LOOK_NOSE[] = {
   {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
   {OP_MOVE,3,3,OP_MOVE,1,3,WAIT_QUICK},
   {OP_MOVE,4,4,OP_MOVE,0,4,WAIT_HOLD},
-  //{OP_BLINK,4,4,OP_BLINK,0,4,WAIT_RANDOM},
+  {OP_BLINK,4,4,OP_BLINK,0,4,WAIT_RANDOM},
   {OP_MOVE,3,3,OP_MOVE,1,3,WAIT_QUICK},
   {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
   {OP_END,0,0,0,0,0,0}
@@ -185,7 +143,7 @@ AnimationStep ANIM_LOOK_BROW[] = {
   {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
   {OP_MOVE,3,1,OP_MOVE,1,1,WAIT_QUICK},
   {OP_MOVE,4,0,OP_MOVE,0,0,WAIT_HOLD},
-  //{OP_BLINK,4,0,OP_BLINK,0,0,WAIT_RANDOM},
+  {OP_BLINK,4,0,OP_BLINK,0,0,WAIT_RANDOM},
   {OP_MOVE,3,1,OP_MOVE,1,1,WAIT_QUICK},
   {OP_MOVE,2,2,OP_MOVE,2,2,WAIT_QUICK},
   {OP_END,0,0,0,0,0,0}
@@ -287,60 +245,17 @@ void setup() {
     Serial.println("STARTING UP");
   #endif
   prerenderPositions();
-  resetDisplay();
-  runAnimation(ANIM_STARE);
+  resetDisplay();  
 }
 
 int pot_val;
-byte pad = 0;
-struct AnimationStep* anim;
 
 void loop() {
-  pad = nintendo.buttons();
-  anim = 0;
-
   pot_val = analogRead(POT_PIN);
   for (int i=0; i<NUM_EYES; i++) {
     lc.setIntensity(i, map(pot_val, 0, 1023, 0, 15));
   }
-
-  #ifndef USE_GAMEPAD
   runAnimation(animations[random(0, sizeof(animations) / sizeof(AnimationStep*))]);
-  #endif
-
-  #ifdef USE_GAMEPAD
-  if (pad & NES_UP && pad & NES_LEFT) {
-    anim = ANIM_UP_LEFT;
-  } else if (pad & NES_UP && pad & NES_RIGHT) {
-    anim = ANIM_UP_RIGHT;
-  } else if (pad & NES_DOWN && pad & NES_LEFT) {
-    anim = ANIM_DOWN_LEFT;
-  } else if (pad & NES_DOWN && pad & NES_RIGHT) {
-    anim = ANIM_DOWN_RIGHT;
-  } else if (pad & NES_UP) {
-    anim = ANIM_LOOK_UP;
-  } else if (pad & NES_DOWN) {
-    anim = ANIM_LOOK_DOWN;
-  } else if (pad & NES_LEFT) {
-    anim = ANIM_LOOK_LEFT;
-  } else if (pad & NES_RIGHT) {
-    anim = ANIM_LOOK_RIGHT;
-  } else if (pad & NES_A) {
-    anim = ANIM_ROLL;
-  } else if (pad & NES_B) {
-    blinkEyes(1, 1, 2, 2, 2, 2);
-  } else if (pad & NES_SELECT) {
-    anim = ANIM_CROSSED;
-  } else if (pad & NES_START) {
-    anim = ANIM_DERP;
-  }
-
-  if (anim != 0) {
-    runAnimation(anim);
-  } else {
-    delay(100);
-  }
-  #endif
 }
 
 // This is a total mess, and it shames me.
