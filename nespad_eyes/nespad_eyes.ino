@@ -12,6 +12,8 @@ LedControl lc = LedControl(12, 11, 10, 2);
 #define DEBUG 1
 
 #define INTENSITY 0
+#define INTENSITY_MIN 1
+#define INTENSITY_MAX 15
 
 #define EYE_LEFT 0
 #define EYE_RIGHT 1
@@ -26,28 +28,25 @@ LedControl lc = LedControl(12, 11, 10, 2);
 #define PUPIL_COLS 2
 #define PUPIL_ROWS 2
 
-#define MIN_PUPIL_X 0
-#define MAX_PUPIL_X NUM_COLS - PUPIL_COLS - MARGIN_X * 2
+#define PUPIL_X_MIN 0
+#define PUPIL_X_MAX NUM_COLS - PUPIL_COLS - MARGIN_X * 2
 
-#define MIN_PUPIL_Y 0
-#define MAX_PUPIL_Y NUM_ROWS - PUPIL_ROWS - MARGIN_Y * 2
+#define PUPIL_Y_MIN 0
+#define PUPIL_Y_MAX NUM_ROWS - PUPIL_ROWS - MARGIN_Y * 2
 
-#define MIN_EYELID 0
-#define MAX_EYELID NUM_ROWS
+#define PUPIL_X_CENTER 2
+#define PUPIL_Y_CENTER 2
 
-#define CENTER_PUPIL_X 2
-#define CENTER_PUPIL_Y 2
-
-#define MIN_INTENSITY 1
-#define MAX_INTENSITY 15
+#define EYELID_MIN 0
+#define EYELID_MAX NUM_ROWS
 
 #define LOOP_DELAY 25
 
-#define MAX_IDLE_TIME 3000
-#define MIN_IDLE_MOVE_DELAY 200
-#define MAX_IDLE_MOVE_DELAY 1000
+#define IDLE_TIME_MAX 2000
+#define IDLE_MOVE_DELAY_MIN 200
+#define IDLE_MOVE_DELAY_MAX 1000
 
-#define IDLE_BLINK_CHANCE 7
+#define IDLE_BLINK_CHANCE 15
 
 // Templates for pupil and eyeball
 const byte template_pupil = B11000000;
@@ -63,27 +62,35 @@ const byte template_eye[8] = {
 };
 
 byte idlePads[] = {
-  NES_UP, NES_DOWN, NES_LEFT, NES_RIGHT,
-  NES_UP | NES_LEFT, NES_UP | NES_RIGHT,
-  NES_DOWN | NES_LEFT, NES_DOWN | NES_RIGHT,
-  NES_LEFT | NES_START, NES_RIGHT | NES_START
+  0,
+  NES_UP,
+  NES_DOWN,
+  NES_LEFT,
+  NES_RIGHT,
+  NES_UP | NES_LEFT,
+  NES_UP | NES_RIGHT,
+  NES_DOWN | NES_LEFT,
+  NES_DOWN | NES_RIGHT,
+  NES_RIGHT | NES_START,
+  NES_UP | NES_RIGHT | NES_START,
+  NES_DOWN | NES_RIGHT | NES_START
 };
 
 // Display buffer for rendering eyes
 byte eyes[NUM_EYES + 1][NUM_ROWS + 1];
 
 // Prerendered positions of the eyeball & pupil
-byte positions[MAX_PUPIL_X + 1][MAX_PUPIL_Y + 1][NUM_ROWS + 1];
+byte positions[PUPIL_X_MAX + 1][PUPIL_Y_MAX + 1][NUM_ROWS + 1];
 
-#define X_POS 0
-#define Y_POS 1
-#define EYELID_POS 2
+#define POS_X 0
+#define POS_Y 1
+#define POS_EYELID 2
 
 int current_pos[NUM_EYES][3];
 int target_pos[NUM_EYES][3];
-int min_pos[] = { MIN_PUPIL_X, MIN_PUPIL_Y, MIN_EYELID };
-int max_pos[] = { MAX_PUPIL_X, MAX_PUPIL_Y, MAX_EYELID };
-int scale_pos[] = { 1, 1, 3 };
+int min_pos[] = { PUPIL_X_MIN, PUPIL_Y_MIN, EYELID_MIN };
+int max_pos[] = { PUPIL_X_MAX, PUPIL_Y_MAX, EYELID_MAX };
+int step_pos[] = { 1, 1, 3 };
 
 int i, current, target, pot, pad, idle_pad, idle_time, idle_move_delay;
 
@@ -102,20 +109,36 @@ void setup() {
 }
 
 void loop() {
+
+  // Adjust intensity based on the potentiometer position
   pot = map(analogRead(POT_PIN), 0, 1023, 0, 15);
   setDisplayIntensity(pot);
 
+  // Grab gamepad state
   pad = nintendo.buttons();
+
+  // If the gamepad is entirely neutral, increment the idle timer.
   idle_time = (pad != 0) ? 0 : idle_time + LOOP_DELAY;
 
-  if (idle_time > MAX_IDLE_TIME) {
+  // If we're past the max idle time, start performing idle animations
+  if (idle_time >= IDLE_TIME_MAX) {
+    
+    // Constrain the idle timer to max value, so we don't
+    // just keep incrementing and overflow the variable
+    idle_time = IDLE_TIME_MAX;
+    
+    // Tick down the delay timer until the next idle move.
     idle_move_delay -= LOOP_DELAY;
+    
     if (idle_move_delay <= 0) {
       setRandomIdlePad();
     }
+
+    // Set the idle animation pad state as if it were user input
     pad = idle_pad;
+    
   }
-  
+
   setTargetsFromPad(pad);
   animateToTargets();
   updateDisplay();
@@ -125,7 +148,7 @@ void loop() {
 
 byte setRandomIdlePad() {
   idle_pad = idlePads[random(0, sizeof(idlePads))];
-  idle_move_delay = random(MIN_IDLE_MOVE_DELAY, MAX_IDLE_MOVE_DELAY);
+  idle_move_delay = random(IDLE_MOVE_DELAY_MIN, IDLE_MOVE_DELAY_MAX);
   
   // Blink quickly, every now and then
   if (random(0, 100) < IDLE_BLINK_CHANCE) {
@@ -136,54 +159,42 @@ byte setRandomIdlePad() {
 
 void setTargetsFromPad(byte pad) {
 
-  target_pos[EYE_LEFT][EYELID_POS] = (pad & NES_B) ? MAX_EYELID : MIN_EYELID;
-  target_pos[EYE_RIGHT][EYELID_POS] = (pad & NES_A) ? MAX_EYELID : MIN_EYELID;
-  
-  if (pad & NES_UP) {
-    target_pos[EYE_LEFT][Y_POS] = MIN_PUPIL_Y;
-    target_pos[EYE_RIGHT][Y_POS] = MIN_PUPIL_Y;
-  } else if (pad & NES_DOWN) {
-    target_pos[EYE_LEFT][Y_POS] = MAX_PUPIL_Y;
-    target_pos[EYE_RIGHT][Y_POS] = MAX_PUPIL_Y;
-  } else {
-    target_pos[EYE_LEFT][Y_POS] = CENTER_PUPIL_Y;
-    target_pos[EYE_RIGHT][Y_POS] = CENTER_PUPIL_Y;
-  }
-  
-  if (pad & NES_LEFT) {
-    target_pos[EYE_LEFT][X_POS] = MIN_PUPIL_X;
-    target_pos[EYE_RIGHT][X_POS] = MIN_PUPIL_X;
-  } else if (pad & NES_RIGHT) {
-    target_pos[EYE_LEFT][X_POS] = MAX_PUPIL_X;
-    target_pos[EYE_RIGHT][X_POS] = MAX_PUPIL_X;
-  } else {
-    target_pos[EYE_LEFT][X_POS] = CENTER_PUPIL_X;
-    target_pos[EYE_RIGHT][X_POS] = CENTER_PUPIL_X;
-  }
+  // B & A close left & right eyelids respectively
+  target_pos[EYE_LEFT][POS_EYELID] = (pad & NES_B) ? EYELID_MAX : EYELID_MIN;
+  target_pos[EYE_RIGHT][POS_EYELID] = (pad & NES_A) ? EYELID_MAX : EYELID_MIN;
 
+  // Vertical eye movement on up/down/center
+  target_pos[EYE_LEFT][POS_Y] = target_pos[EYE_RIGHT][POS_Y] =
+    (pad & NES_UP)   ? PUPIL_Y_MIN :
+    (pad & NES_DOWN) ? PUPIL_Y_MAX :
+                       PUPIL_Y_CENTER;
+
+  // Horizontal eye movement on left/right/center
+  target_pos[EYE_LEFT][POS_X] = target_pos[EYE_RIGHT][POS_X] =
+    (pad & NES_LEFT)  ? PUPIL_X_MIN :
+    (pad & NES_RIGHT) ? PUPIL_X_MAX :
+                        PUPIL_X_CENTER;
+
+  // Start button inverts horizontal axis - e.g. for crossed eyes
   if (pad & NES_START) {
-    target_pos[EYE_RIGHT][X_POS] = abs(4 - target_pos[EYE_RIGHT][X_POS]);
+    target_pos[EYE_RIGHT][POS_X] = abs(PUPIL_X_MAX - target_pos[EYE_RIGHT][POS_X]);
   }
 
+  // Select button inverts vertical axis - e.g. for crazy eyes
   if (pad & NES_SELECT) {
-    target_pos[EYE_RIGHT][Y_POS] = abs(4 - target_pos[EYE_RIGHT][Y_POS]);
+    target_pos[EYE_RIGHT][POS_Y] = abs(PUPIL_Y_MAX - target_pos[EYE_RIGHT][POS_Y]);
   }
   
 }
 
-void setDisplayIntensity(int intensity) {
-  for (i=0; i<NUM_EYES; i++) {
-    lc.setIntensity(i, intensity);
-  }  
-}
-
+// Move current eye & eyelid positions one step toward target positions
 void animateToTargets() {
   for (int eye_idx=0; eye_idx<NUM_EYES; eye_idx++) {
     for (int k=0; k<3; k++) {
       current = current_pos[eye_idx][k];
       target = target_pos[eye_idx][k];
       if (current != target) {
-        current += (current < target) ? scale_pos[k] : 0-scale_pos[k];
+        current += (current < target) ? step_pos[k] : 0-step_pos[k];
         current_pos[eye_idx][k] = constrain(current, min_pos[k], max_pos[k]);
       }
     }
@@ -203,29 +214,15 @@ void resetDisplay() {
     lc.shutdown(i, false);
     lc.setIntensity(i, INTENSITY);
     lc.clearDisplay(i);
-    current_pos[i][X_POS] = CENTER_PUPIL_X;
-    current_pos[i][Y_POS] = CENTER_PUPIL_Y;
-    current_pos[i][EYELID_POS] = 0;
-    target_pos[i][X_POS] = CENTER_PUPIL_X;
-    target_pos[i][Y_POS] = CENTER_PUPIL_Y;
-    target_pos[i][EYELID_POS] = 0;
+    current_pos[i][POS_X] = target_pos[i][POS_X] = PUPIL_X_CENTER;
+    current_pos[i][POS_Y] = target_pos[i][POS_Y] = PUPIL_Y_CENTER;
+    current_pos[i][POS_EYELID] = target_pos[i][POS_EYELID] = 0;
   }  
 }
 
 // Set the eyeball by copying a prerendered position 
 void copyEyeballPosition(int idx, int x, int y) {
   memcpy(eyes[idx], positions[x][y], NUM_ROWS);
-}
-
-// Fill the set of prerendered positions for all x/y pairs
-// Probably a gross over-optimization, but kind of hoping
-// doing less math on every eye position will save battery life
-void prerenderPositions() {
-  for (int x=0; x<=MAX_PUPIL_X; x++) {
-    for (int y=0; y<=MAX_PUPIL_Y; y++) {
-      renderPosition(x, y);
-    }
-  }
 }
 
 // Render one eyeball by copying in blank template and 
@@ -245,11 +242,29 @@ void renderPosition(int x, int y) {
   }
 }
 
+// Fill the set of prerendered positions for all x/y pairs
+// Probably a gross over-optimization, but kind of hoping
+// doing less math on every eye position will save battery life
+void prerenderPositions() {
+  for (int x=0; x<=PUPIL_X_MAX; x++) {
+    for (int y=0; y<=PUPIL_Y_MAX; y++) {
+      renderPosition(x, y);
+    }
+  }
+}
+
+// Set display intensity
+void setDisplayIntensity(int intensity) {
+  for (i=0; i<NUM_EYES; i++) {
+    lc.setIntensity(i, intensity);
+  }  
+}
+
 // Set the LED contents from the display buffers
 void updateDisplay() {
   for (int i=0; i<NUM_EYES; i++) {
-    copyEyeballPosition(i, current_pos[i][X_POS], current_pos[i][Y_POS]);
-    renderEyelid(i, current_pos[i][EYELID_POS]);
+    copyEyeballPosition(i, current_pos[i][POS_X], current_pos[i][POS_Y]);
+    renderEyelid(i, current_pos[i][POS_EYELID]);
   }
   for (int j=0; j<NUM_ROWS; j++) {
     for (int i=0; i<NUM_EYES; i++) {
