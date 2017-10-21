@@ -4,11 +4,10 @@
 #include <Max72xxPanel.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
-#include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
-
-const char* ssid = "Subspace";
-const char* password = "p4$$w0rd";
+#include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
+#include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
+#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
 
 #define POT_PIN 0
 
@@ -150,6 +149,8 @@ NESpad nintendo = NESpad(5,4,16);
 // specify the port to listen on as an argument
 ESP8266WebServer server ( SERVER_PORT );
 
+WiFiManager wifiManager;
+
 int i, current, target, pot, pad, idle_pad;
 byte display_intensity;
 unsigned long t_now, t_last;
@@ -211,12 +212,16 @@ void loop() {
 }
 
 void setupWifiServer() {
+  wifiManager.setAPCallback(configModeCallback);
+  wifiManager.autoConnect();
+
   // Connect to WiFi network
+  /*
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
-  
   WiFi.begin(ssid, password);
+  */
   
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -231,7 +236,7 @@ void setupWifiServer() {
 
   // Print the IP address
   Serial.println(WiFi.localIP());
-  
+
   if ( MDNS.begin ( SERVER_NAME ) ) {
     Serial.println ( "MDNS responder started" );
   }
@@ -239,13 +244,22 @@ void setupWifiServer() {
   server.on ( "/", handleRoot );
   server.on ( "/up", handleUp );
   server.on ( "/down", handleDown );
+  server.on ( "/reset", handleReset );
   server.on ( "/test.svg", drawGraph );
   server.on ( "/inline", []() {
     server.send ( 200, "text/plain", "this works as well" );
   } );
   server.onNotFound ( handleNotFound );
   server.begin();
+  
   Serial.println ( "HTTP server started" );
+}
+
+void configModeCallback (WiFiManager *myWiFiManager) {
+  Serial.println("Entered config mode");
+  Serial.println(WiFi.softAPIP());
+  //if you used auto generated SSID, print it
+  Serial.println(myWiFiManager->getConfigPortalSSID());
 }
 
 void handleUp () {
@@ -264,6 +278,13 @@ void handleDown () {
   }
   snprintf(temp, 400, "<html><body>Intensity = %02d (down)</body></html>", display_intensity);
   server.send ( 200, "text/html", temp );
+}
+
+void handleReset () {
+  server.send ( 200, "text/plain", "RESET" );
+  // wifiManager.resetSettings();
+  delay(1000);
+  ESP.restart();
 }
 
 void handleRoot() {
