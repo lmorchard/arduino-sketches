@@ -156,12 +156,14 @@ byte display_intensity;
 unsigned long t_now, t_last;
 long td_eyes, td_wifi, idle_time, idle_move_delay;
 
-#define NUM_TIMERS 2
+#define NUM_TIMERS 3
 #define TIMER_EYES 0
 #define TIMER_SERVER 1
+#define TIMER_RESTART 2
 const PROGMEM long timers_max[] = { 
   25, 
-  100 
+  100,
+  1000 * 60 * 10
 };
 
 long timers[NUM_TIMERS];
@@ -204,7 +206,7 @@ void loop() {
       long elapsed = timers_max[i] - timers[i];
       switch (i) {
         case TIMER_EYES: loopEyes(elapsed); break;
-        case TIMER_SERVER: loopServer(elapsed); break;
+        case TIMER_RESTART: loopRestart(elapsed); break;
       }
       timers[i] = timers_max[i];
     }
@@ -282,7 +284,6 @@ void handleDown () {
 
 void handleReset () {
   server.send ( 200, "text/plain", "RESET" );
-  // wifiManager.resetSettings();
   delay(1000);
   ESP.restart();
 }
@@ -310,6 +311,8 @@ void handleRoot() {
     <br>\
     <h2><a target=\"output\" href=\"/down\">DOWN</a></h2>\
     <h2><a target=\"output\" href=\"/up\">UP</a></h2>\
+    <br>\
+    <h2><a target=\"output\" href=\"/reset\">RESET</a></h2>\
     <br>\
     <iframe name=\"output\" src=\"/test.svg\"></iframe>\
   </body>\
@@ -355,7 +358,8 @@ void drawGraph() {
   server.send ( 200, "image/svg+xml", out);
 }
 
-void loopServer(unsigned long t_delta) {
+void loopRestart(unsigned long t_delta) {
+  ESP.restart();
 }
 
 void loopEyes(unsigned long t_delta) {
