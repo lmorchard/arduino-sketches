@@ -8,13 +8,18 @@
 #include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
 #include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
+#include <FS.h>
+#include <WebSockets.h>
+#include <WebSocketsClient.h>
+#include <WebSocketsServer.h>
 
 #define POT_PIN 0
 
 #define DEBUG 1
 
-#define SERVER_PORT 80
 #define SERVER_NAME "pumpkin"
+#define SERVER_PORT 80
+#define SERVER_WEBSOCKET_PORT 81
 
 #define INTENSITY 0
 #define INTENSITY_MIN 1
@@ -45,11 +50,15 @@
 #define EYELID_MIN 0
 #define EYELID_MAX NUM_ROWS
 
+#define MOUTH_MIN 0
+#define MOUTH_MAX 3
+
 #define IDLE_TIME_MAX 2000
 #define IDLE_MOVE_DELAY_MIN 200
 #define IDLE_MOVE_DELAY_MAX 1000
 
 #define IDLE_BLINK_CHANCE 15
+#define IDLE_MOUTH_CHANCE 40
 
 // Templates for pupil and eyeball
 const byte template_pupil = B11000000;
@@ -66,44 +75,44 @@ const byte template_eye[8] = {
 
 const byte mouth[4][8] = {
   {
-    B00000000,
+    B11111111,
     B11111110,
     B11111100,
     B11111000,
     B11110000,
     B11100000,
     B11000000,
-    B00000000
+    B10000000
   },
   {
-    B00000000,
-    B11111111,
-    B11111111,
-    B11111111,
-    B11111111,
-    B11111111,
-    B11111111,
-    B00000000
+    B11110001,
+    B11110001,
+    B11110001,
+    B11110001,
+    B11111011,
+    B11111011,
+    B11111011,
+    B11111011,
   },
   {
-    B00000000,
-    B11111111,
-    B11111111,
-    B11111111,
-    B11111111,
-    B11111111,
-    B11111111,
-    B00000000
+    B10001111,
+    B10001111,
+    B10001111,
+    B10001111,
+    B11011111,
+    B11011111,
+    B11011111,
+    B11011111,
   },
   {
-    B00000000,
+    B11111111,
     B01111111,
     B00111111,
     B00011111,
     B00001111,
     B00000111,
     B00000011,
-    B00000000
+    B00000001
   },
 };
 
@@ -119,7 +128,18 @@ byte idlePads[] = {
   NES_DOWN | NES_RIGHT,
   NES_RIGHT | NES_START,
   NES_UP | NES_RIGHT | NES_START,
-  NES_DOWN | NES_RIGHT | NES_START
+  NES_DOWN | NES_RIGHT | NES_START,
+  NES_UP | NES_SELECT,
+  NES_DOWN | NES_SELECT,
+  NES_LEFT | NES_SELECT,
+  NES_RIGHT | NES_SELECT,
+  NES_UP | NES_LEFT | NES_SELECT,
+  NES_UP | NES_RIGHT | NES_SELECT,
+  NES_DOWN | NES_LEFT | NES_SELECT,
+  NES_DOWN | NES_RIGHT | NES_SELECT,
+  NES_RIGHT | NES_START | NES_SELECT,
+  NES_UP | NES_RIGHT | NES_START | NES_SELECT,
+  NES_DOWN | NES_RIGHT | NES_START | NES_SELECT
 };
 
 // Display buffer for rendering eyes
@@ -131,51 +151,63 @@ byte positions[PUPIL_X_MAX + 1][PUPIL_Y_MAX + 1][NUM_ROWS + 1];
 #define POS_X 0
 #define POS_Y 1
 #define POS_EYELID 2
+#define POS_MOUTH 3
+#define NUM_POS 4
 
-int current_pos[NUM_EYES][3];
-int target_pos[NUM_EYES][3];
-int min_pos[] = { PUPIL_X_MIN, PUPIL_Y_MIN, EYELID_MIN };
-int max_pos[] = { PUPIL_X_MAX, PUPIL_Y_MAX, EYELID_MAX };
-int step_pos[] = { 1, 1, 3 };
+int current_pos[NUM_EYES][NUM_POS];
+int target_pos[NUM_EYES][NUM_POS];
+int min_pos[] = { PUPIL_X_MIN, PUPIL_Y_MIN, EYELID_MIN, MOUTH_MIN };
+int max_pos[] = { PUPIL_X_MAX, PUPIL_Y_MAX, EYELID_MAX, MOUTH_MAX };
+int step_pos[] = { 1, 1, 3, 1 };
 
 // Attach CS to this pin, DIN to MOSI and CLK to SCK (cf http://arduino.cc/en/Reference/SPI )
 // CS pin, # horiz displays, # vert displays
 Max72xxPanel matrix = Max72xxPanel(12, 6, 1);
 
 // put your own strobe/clock/data pin numbers here -- see the pinout in readme.txt
-NESpad nintendo = NESpad(5,4,16);
+NESpad nintendo = NESpad(5, 4, 16);
 
 // Create an instance of the server
 // specify the port to listen on as an argument
 ESP8266WebServer server ( SERVER_PORT );
+WebSocketsServer webSocket = WebSocketsServer(SERVER_WEBSOCKET_PORT);
 
 WiFiManager wifiManager;
 
-int i, current, target, pot, pad, idle_pad;
+int i, current, target, pot, pad, web_pad, idle_pad;
 byte display_intensity;
 unsigned long t_now, t_last;
 long td_eyes, td_wifi, idle_time, idle_move_delay;
 
-#define NUM_TIMERS 3
-#define TIMER_EYES 0
-#define TIMER_SERVER 1
-#define TIMER_RESTART 2
-const PROGMEM long timers_max[] = { 
-  25, 
-  100,
-  1000 * 60 * 10
-};
+#define TIMER_DELAY_EYES 50
+#define TIMER_DELAY_RESTART 1000 * 60 * 10
 
+#define NUM_TIMERS 2
+#define TIMER_EYES 0
+#define TIMER_RESTART 1
+
+const PROGMEM long timers_max[] = {
+  TIMER_DELAY_EYES,
+  TIMER_DELAY_RESTART
+};
 long timers[NUM_TIMERS];
 
 void setup() {
-  #ifdef DEBUG
-    Serial.begin(115200);
-    while (!Serial) { }
-    Serial.println("STARTING UP");
-  #endif
+  Serial.begin(115200);
+  while (!Serial) { }
+  Serial.println("STARTING UP");
 
-  setupWifiServer();  
+  if (!SPIFFS.begin())
+  {
+    // Serious problem
+    Serial.println("SPIFFS Mount failed");
+  } else {
+    Serial.println("SPIFFS Mount succesfull");
+  }
+
+  web_pad = 0;
+
+  setupWifiServer();
   resetTimers();
   prerenderPositions();
   resetDisplay();
@@ -187,13 +219,13 @@ void resetTimers() {
   for (i = 0; i < NUM_TIMERS; i++) {
     timers[i] = timers_max[i];
   }
-  
   idle_time = 0;
-  idle_move_delay = 0;  
+  idle_move_delay = 0;
 }
 
 void loop() {
   server.handleClient();
+  webSocket.loop();
 
   unsigned long t_delta;
   t_now = millis();
@@ -214,24 +246,25 @@ void loop() {
 }
 
 void setupWifiServer() {
+  Serial.print("Connecting to wifi...");
   wifiManager.setAPCallback(configModeCallback);
   wifiManager.autoConnect();
 
   // Connect to WiFi network
   /*
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
+    Serial.println();
+    Serial.print("Connecting to ");
+    Serial.println(ssid);
+    WiFi.begin(ssid, password);
   */
-  
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
   Serial.println("");
-  Serial.println("WiFi connected");
-  
+  Serial.println("wifi connected");
+
   // Start the server
   server.begin();
   Serial.println("Server started");
@@ -243,18 +276,23 @@ void setupWifiServer() {
     Serial.println ( "MDNS responder started" );
   }
 
-  server.on ( "/", handleRoot );
+  server.serveStatic("/", SPIFFS, "/index.html");
+  server.serveStatic("/index.html", SPIFFS, "/index.html");
+  server.serveStatic("/index.css", SPIFFS, "/index.css");
+  server.serveStatic("/index.js", SPIFFS, "/index.js");
+  server.serveStatic("/test.txt", SPIFFS, "/test.txt");
+
   server.on ( "/up", handleUp );
   server.on ( "/down", handleDown );
   server.on ( "/reset", handleReset );
-  server.on ( "/test.svg", drawGraph );
-  server.on ( "/inline", []() {
-    server.send ( 200, "text/plain", "this works as well" );
-  } );
   server.onNotFound ( handleNotFound );
   server.begin();
-  
+
   Serial.println ( "HTTP server started" );
+
+  webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
+  Serial.println ( "WebSocket server started" );
 }
 
 void configModeCallback (WiFiManager *myWiFiManager) {
@@ -262,6 +300,85 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   Serial.println(WiFi.softAPIP());
   //if you used auto generated SSID, print it
   Serial.println(myWiFiManager->getConfigPortalSSID());
+}
+
+#define USE_SERIAL Serial
+
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+  switch (type) {
+    case WStype_DISCONNECTED:
+      USE_SERIAL.printf("[%u] Disconnected!\n", num);
+      break;
+    case WStype_CONNECTED:
+      {
+        IPAddress ip = webSocket.remoteIP(num);
+        USE_SERIAL.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+
+        // send message to client
+        webSocket.sendTXT(num, "Connected");
+      }
+      break;
+    case WStype_TEXT:
+      USE_SERIAL.printf("[%u] get Text: %s\n", num, payload);
+
+      if (strcmp("talkon", (const char *)payload) == 0) {
+        web_pad |= NES_SELECT;
+      }
+      if (strcmp("talkoff", (const char *)payload) == 0) {
+        web_pad &= ~NES_SELECT;
+      }
+      if (strcmp("blinkon", (const char *)payload) == 0) {
+        web_pad |= NES_B | NES_A;
+      }
+      if (strcmp("blinkoff", (const char *)payload) == 0) {
+        web_pad &= ~(NES_B | NES_A);
+      }
+      if (strcmp("joypadoff", (const char *)payload) == 0) {
+        web_pad &= ~(NES_UP | NES_DOWN | NES_LEFT | NES_RIGHT);
+      }
+      if (strcmp("joypadupon", (const char *)payload) == 0) {
+        web_pad |= NES_UP;
+      }
+      if (strcmp("joypadupoff", (const char *)payload) == 0) {
+        web_pad &= ~NES_UP;
+      }
+      if (strcmp("joypaddownon", (const char *)payload) == 0) {
+        web_pad |= NES_DOWN;
+      }
+      if (strcmp("joypaddownoff", (const char *)payload) == 0) {
+        web_pad &= ~NES_DOWN;
+      }
+      if (strcmp("joypadlefton", (const char *)payload) == 0) {
+        web_pad |= NES_LEFT;
+      }
+      if (strcmp("joypadleftoff", (const char *)payload) == 0) {
+        web_pad &= ~NES_LEFT;
+      }
+      if (strcmp("joypadrighton", (const char *)payload) == 0) {
+        web_pad |= NES_RIGHT;
+      }
+      if (strcmp("joypadrightoff", (const char *)payload) == 0) {
+        web_pad &= ~NES_RIGHT;
+      }
+
+      Serial.print("web_pad = ");
+      Serial.println(web_pad);
+
+      // send message to client
+      // webSocket.sendTXT(num, "message here");
+
+      // send data to all connected clients
+      // webSocket.broadcastTXT("message here");
+      break;
+    case WStype_BIN:
+      USE_SERIAL.printf("[%u] get binary length: %u\n", num, length);
+      hexdump(payload, length);
+
+      // send message to client
+      // webSocket.sendBIN(num, payload, length);
+      break;
+  }
+
 }
 
 void handleUp () {
@@ -273,7 +390,7 @@ void handleUp () {
   server.send ( 200, "text/html", temp );
 }
 
-void handleDown () {  
+void handleDown () {
   char temp[400];
   if (display_intensity > INTENSITY_MIN) {
     setDisplayIntensity(display_intensity - 1);
@@ -286,41 +403,6 @@ void handleReset () {
   server.send ( 200, "text/plain", "RESET" );
   delay(1000);
   ESP.restart();
-}
-
-void handleRoot() {
-  char temp[800];
-  int sec = millis() / 1000;
-  int min = sec / 60;
-  int hr = min / 60;
-
-  snprintf ( temp, 800,
-
-"<html>\
-  <head>\
-    <title>ESP8266 Demo</title>\
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
-    <style>\
-      body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
-    </style>\
-  </head>\
-  <body>\
-    <h1>Hello from ESP8266!</h1>\
-    <p>Uptime: %02d:%02d:%02d</p>\
-    <img src=\"/test.svg\" />\
-    <br>\
-    <h2><a target=\"output\" href=\"/down\">DOWN</a></h2>\
-    <h2><a target=\"output\" href=\"/up\">UP</a></h2>\
-    <br>\
-    <h2><a target=\"output\" href=\"/reset\">RESET</a></h2>\
-    <br>\
-    <iframe name=\"output\" src=\"/test.svg\"></iframe>\
-  </body>\
-</html>",
-
-    hr, min % 60, sec % 60
-  );
-  server.send ( 200, "text/html", temp );
 }
 
 void handleNotFound() {
@@ -340,24 +422,6 @@ void handleNotFound() {
   server.send ( 404, "text/plain", message );
 }
 
-void drawGraph() {
-  String out = "";
-  char temp[100];
-  out += "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" width=\"400\" height=\"150\">\n";
-  out += "<rect width=\"400\" height=\"150\" fill=\"rgb(250, 230, 210)\" stroke-width=\"1\" stroke=\"rgb(0, 0, 0)\" />\n";
-  out += "<g stroke=\"black\">\n";
-  int y = rand() % 130;
-  for (int x = 10; x < 390; x+= 10) {
-    int y2 = rand() % 130;
-    sprintf(temp, "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke-width=\"1\" />\n", x, 140 - y, x + 10, 140 - y2);
-    out += temp;
-    y = y2;
-  }
-  out += "</g>\n</svg>\n";
-
-  server.send ( 200, "image/svg+xml", out);
-}
-
 void loopRestart(unsigned long t_delta) {
   ESP.restart();
 }
@@ -366,26 +430,36 @@ void loopEyes(unsigned long t_delta) {
   // Adjust intensity based on the potentiometer position
   // pot = map(analogRead(POT_PIN), 0, 1023, 0, 15);
   // setDisplayIntensity(pot);
+  matrix.setIntensity(display_intensity);
 
   // Grab gamepad state
   pad = nintendo.buttons();
 
+  if (pad == 0 && web_pad != 0) { pad = web_pad; }
+
   // If the gamepad is entirely neutral, increment the idle timer.
   // Otherwise, reset it.
   idle_time = (pad != 0) ? 0 : (idle_time + t_delta);
-  
+
   // If we're past the max idle time, start performing idle animations
   if (idle_time >= IDLE_TIME_MAX) {
-    
+
     // Constrain the idle timer to max value, so we don't
     // just keep incrementing and overflow the variable
     idle_time = IDLE_TIME_MAX;
-    
+
     // Tick down the delay timer until the next idle move.
     idle_move_delay -= t_delta;
-    
+
     if (idle_move_delay <= 0) {
       setRandomIdlePad();
+    }
+
+    // Tap the mouth button occasionally while idle
+    if (random(0, 100) < IDLE_MOUTH_CHANCE) {
+      idle_pad |= NES_SELECT;
+    } else {
+      idle_pad &= ~NES_SELECT;
     }
 
     // Set the idle animation pad state as if it were user input
@@ -401,7 +475,7 @@ void loopEyes(unsigned long t_delta) {
 byte setRandomIdlePad() {
   idle_pad = idlePads[random(0, sizeof(idlePads))];
   idle_move_delay = random(IDLE_MOVE_DELAY_MIN, IDLE_MOVE_DELAY_MAX);
-  
+
   // Blink quickly, every now and then
   if (random(0, 100) < IDLE_BLINK_CHANCE) {
     idle_pad |= NES_B | NES_A;
@@ -417,15 +491,15 @@ void setTargetsFromPad(byte pad) {
 
   // Vertical eye movement on up/down/center
   target_pos[EYE_LEFT][POS_Y] = target_pos[EYE_RIGHT][POS_Y] =
-    (pad & NES_UP)   ? PUPIL_Y_MIN :
-    (pad & NES_DOWN) ? PUPIL_Y_MAX :
-                       PUPIL_Y_CENTER;
+                                  (pad & NES_UP)   ? PUPIL_Y_MIN :
+                                  (pad & NES_DOWN) ? PUPIL_Y_MAX :
+                                  PUPIL_Y_CENTER;
 
   // Horizontal eye movement on left/right/center
   target_pos[EYE_LEFT][POS_X] = target_pos[EYE_RIGHT][POS_X] =
-    (pad & NES_LEFT)  ? PUPIL_X_MIN :
-    (pad & NES_RIGHT) ? PUPIL_X_MAX :
-                        PUPIL_X_CENTER;
+                                  (pad & NES_LEFT)  ? PUPIL_X_MIN :
+                                  (pad & NES_RIGHT) ? PUPIL_X_MAX :
+                                  PUPIL_X_CENTER;
 
   // Start button inverts horizontal axis - e.g. for crossed eyes
   if (pad & NES_START) {
@@ -433,20 +507,23 @@ void setTargetsFromPad(byte pad) {
   }
 
   // Select button inverts vertical axis - e.g. for crazy eyes
-  if (pad & NES_SELECT) {
+  target_pos[0][POS_MOUTH] = (pad & NES_SELECT) ? MOUTH_MIN : MOUTH_MAX;
+  /*
+    if (pad & NES_SELECT) {
     target_pos[EYE_RIGHT][POS_Y] = abs(PUPIL_Y_MAX - target_pos[EYE_RIGHT][POS_Y]);
-  }
-  
+    }
+  */
+
 }
 
 // Move current eye & eyelid positions one step toward target positions
 void animateToTargets() {
-  for (int eye_idx=0; eye_idx<NUM_EYES; eye_idx++) {
-    for (int k=0; k<3; k++) {
+  for (int eye_idx = 0; eye_idx < NUM_EYES; eye_idx++) {
+    for (int k = 0; k < NUM_POS; k++) {
       current = current_pos[eye_idx][k];
       target = target_pos[eye_idx][k];
       if (current != target) {
-        current += (current < target) ? step_pos[k] : 0-step_pos[k];
+        current += (current < target) ? step_pos[k] : 0 - step_pos[k];
         current_pos[eye_idx][k] = constrain(current, min_pos[k], max_pos[k]);
       }
     }
@@ -455,7 +532,7 @@ void animateToTargets() {
 
 // Render "eyelid" in display buffer by blacking out rows
 void renderEyelid(int idx, int y) {
-  for (int i=0; i<y; i++) {
+  for (int i = 0; i < y; i++) {
     eyes[idx][i] = 0;
   }
 }
@@ -470,19 +547,20 @@ void resetDisplay() {
   matrix.setRotation(4, 3);
   matrix.setRotation(5, 3);
   matrix.fillScreen(LOW);
-  for (int i=0; i<NUM_EYES; i++) {
+  for (int i = 0; i < NUM_EYES; i++) {
     current_pos[i][POS_X] = target_pos[i][POS_X] = PUPIL_X_CENTER;
     current_pos[i][POS_Y] = target_pos[i][POS_Y] = PUPIL_Y_CENTER;
     current_pos[i][POS_EYELID] = target_pos[i][POS_EYELID] = 0;
-  }  
+    current_pos[i][POS_MOUTH] = target_pos[i][POS_MOUTH] = 0;
+  }
 }
 
-// Set the eyeball by copying a prerendered position 
+// Set the eyeball by copying a prerendered position
 void copyEyeballPosition(int idx, int x, int y) {
   memcpy(eyes[idx], positions[x][y], NUM_ROWS);
 }
 
-// Render one eyeball by copying in blank template and 
+// Render one eyeball by copying in blank template and
 // blacking out the pupil at correct location
 void renderPosition(int x, int y) {
   // Copy in the blank eyeball template
@@ -494,7 +572,7 @@ void renderPosition(int x, int y) {
   // Use XOR to black out the pupil in the appropriate rows
   int start_y = y + MARGIN_Y;
   int end_y = start_y + PUPIL_ROWS;
-  for (int i=start_y; i<end_y; i++) {
+  for (int i = start_y; i < end_y; i++) {
     positions[x][y][i] ^= pupil;
   }
 }
@@ -503,8 +581,8 @@ void renderPosition(int x, int y) {
 // Probably a gross over-optimization, but kind of hoping
 // doing less math on every eye position will save battery life
 void prerenderPositions() {
-  for (int x=0; x<=PUPIL_X_MAX; x++) {
-    for (int y=0; y<=PUPIL_Y_MAX; y++) {
+  for (int x = 0; x <= PUPIL_X_MAX; x++) {
+    for (int y = 0; y <= PUPIL_Y_MAX; y++) {
       renderPosition(x, y);
     }
   }
@@ -513,30 +591,32 @@ void prerenderPositions() {
 // Set display intensity
 void setDisplayIntensity(int intensity) {
   display_intensity = intensity;
-  matrix.setIntensity(display_intensity); 
 }
 
 // Set the LED contents from the display buffers
 void updateDisplay() {
-  for (int i=0; i<NUM_EYES; i++) {
+  for (int i = 0; i < NUM_EYES; i++) {
     copyEyeballPosition(i, current_pos[i][POS_X], current_pos[i][POS_Y]);
     renderEyelid(i, current_pos[i][POS_EYELID]);
   }
-  for (int i=0; i<NUM_EYES; i++) {
-    for (int y=0; y<NUM_ROWS; y++) {
-      for (int x=0; x<NUM_COLS; x++) {
+  for (int i = 0; i < NUM_EYES; i++) {
+    for (int y = 0; y < NUM_ROWS; y++) {
+      for (int x = 0; x < NUM_COLS; x++) {
         int row = eyes[i][y];
-        matrix.drawPixel(x + (NUM_COLS * i), y, bitRead(row, (7-x)));
+        matrix.drawPixel(x + (NUM_COLS * i), y, bitRead(row, (7 - x)));
       }
     }
   }
-  for (int i=0; i<4; i++) {
-    for (int y=0; y<NUM_ROWS; y++) {
-      for (int x=0; x<NUM_COLS; x++) {
-        int row = mouth[i][y];
-        matrix.drawPixel(x + (NUM_COLS * (i + 2)), y, bitRead(row, (7-x)));
+
+  int pos_mouth = current_pos[0][POS_MOUTH];
+  for (int i = 0; i < 4; i++) {
+    for (int y = 0; y < NUM_ROWS; y++) {
+      int mirror_row = (y < NUM_ROWS / 2) ? y : NUM_ROWS - y - 1;
+      int row = (mirror_row < pos_mouth) ? 0 : mouth[i][y];
+      for (int x = 0; x < NUM_COLS; x++) {
+        matrix.drawPixel(x + (NUM_COLS * (i + 2)), y, bitRead(row, (7 - x)));
       }
     }
-  }  
+  }
   matrix.write();
 }
